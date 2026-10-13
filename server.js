@@ -12,9 +12,7 @@ const {
 } = process.env;
 
 if (!RESEND_API_KEY || !CONTACT_TO_EMAIL) {
-  console.error(
-    "Missing RESEND_API_KEY or CONTACT_TO_EMAIL. Copy .env.example to .env and fill it in.",
-  );
+  console.error("Missing RESEND_API_KEY or CONTACT_TO_EMAIL. Copy .env.example to .env and fill it in.");
   process.exit(1);
 }
 
@@ -23,9 +21,7 @@ app.set("trust proxy", 1); // hosts like Render/Railway sit behind a proxy; need
 app.use(express.json({ limit: "20kb" }));
 
 // Only your site(s) may call this API from a browser
-const allowed = ALLOWED_ORIGINS.split(",")
-  .map((o) => o.trim())
-  .filter(Boolean);
+const allowed = ALLOWED_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean);
 app.use(
   cors({
     origin(origin, cb) {
@@ -33,7 +29,7 @@ app.use(
       cb(new Error(`Origin ${origin} not allowed`));
     },
     methods: ["GET", "POST"],
-  }),
+  })
 );
 
 // At most 5 messages per visitor every 15 minutes
@@ -45,41 +41,23 @@ const contactLimiter = rateLimit({
   message: { error: "too many messages, please try again later" },
 });
 
-const LIMITS = {
-  name: 100,
-  email: 200,
-  location: 100,
-  budget: 100,
-  subject: 200,
-  message: 5000,
-};
+const LIMITS = { name: 100, email: 200, location: 100, budget: 100, subject: 200, message: 5000 };
 
 const escapeHtml = (v = "") =>
-  String(v)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+  String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 async function sendEmail(payload) {
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
+    headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok)
-    throw new Error(`Resend responded ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(`Resend responded ${res.status}: ${await res.text()}`);
   return res.json();
 }
 
 // Health check — open this URL in a browser to confirm the server is up (and to wake it on free tiers)
-app.get("/", (_req, res) =>
-  res.json({ ok: true, service: "portfolio-backend" }),
-);
+app.get("/", (_req, res) => res.json({ ok: true, service: "portfolio-backend" }));
 
 app.post("/api/contact", contactLimiter, async (req, res) => {
   const body = req.body || {};
@@ -88,20 +66,13 @@ app.post("/api/contact", contactLimiter, async (req, res) => {
   if (body.website) return res.json({ ok: true });
 
   const data = {};
-  for (const [key, max] of Object.entries(LIMITS))
-    data[key] = String(body[key] ?? "")
-      .trim()
-      .slice(0, max);
+  for (const [key, max] of Object.entries(LIMITS)) data[key] = String(body[key] ?? "").trim().slice(0, max);
 
   if (!data.name || !data.subject || !data.budget || !data.message) {
-    return res
-      .status(400)
-      .json({ error: "please fill in all required fields" });
+    return res.status(400).json({ error: "please fill in all required fields" });
   }
   if (!/^\S+@\S+\.\S+$/.test(data.email)) {
-    return res
-      .status(400)
-      .json({ error: "that email address doesn't look right" });
+    return res.status(400).json({ error: "that email address doesn't look right" });
   }
 
   const rows = [
@@ -130,9 +101,7 @@ app.post("/api/contact", contactLimiter, async (req, res) => {
       reply_to: data.email,
       subject: `Portfolio: ${data.subject}`,
       html,
-      text: [...rows.map(([k, v]) => `${k}: ${v}`), "", data.message].join(
-        "\n",
-      ),
+      text: [...rows.map(([k, v]) => `${k}: ${v}`), "", data.message].join("\n"),
     });
 
     if (SEND_AUTO_REPLY === "true") {
@@ -170,11 +139,7 @@ const decode = (str = "") =>
     .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
 
 const tag = (xml, name) => {
-  const m = xml.match(
-    new RegExp(
-      `<${name}[^>]*>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?</${name}>`,
-    ),
-  );
+  const m = xml.match(new RegExp(`<${name}[^>]*>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?</${name}>`));
   return m ? m[1].trim() : "";
 };
 
@@ -185,22 +150,17 @@ function parseMediumFeed(xml) {
     .map((chunk) => {
       const item = chunk.split("</item>")[0];
       const content = tag(item, "content:encoded");
-      const text = decode(
-        content
-          .replace(/<figcaption[\s\S]*?<\/figcaption>/g, "")
-          .replace(/<[^>]+>/g, " "),
-      )
+      const text = decode(content.replace(/<figcaption[\s\S]*?<\/figcaption>/g, "").replace(/<[^>]+>/g, " "))
         .replace(/\s+/g, " ")
         .trim();
       const image = content.match(/<img[^>]+src="([^"]+)"/)?.[1] || null;
-      const categories = [
-        ...item.matchAll(
-          /<category>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/category>/g,
-        ),
-      ].map((m) => decode(m[1].trim()));
+      const categories = [...item.matchAll(/<category>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/category>/g)].map((m) =>
+        decode(m[1].trim())
+      );
       const link = (tag(item, "link") || tag(item, "guid")).split("?")[0];
 
       return {
+        id: mediumPostId(tag(item, "guid")) || mediumPostId(link),
         title: decode(tag(item, "title")),
         link,
         date: new Date(tag(item, "pubDate")).toISOString(),
@@ -213,42 +173,50 @@ function parseMediumFeed(xml) {
     .filter((p) => p.title && p.link);
 }
 
-app.get("/api/medium", async (req, res) => {
-  const user = String(req.query.user || "")
-    .replace(/^@/, "")
-    .trim();
-  if (!/^[A-Za-z0-9_.-]{1,50}$/.test(user)) {
-    return res.status(400).json({ error: "add ?user=yourMediumUsername" });
-  }
-
+// Fetches and caches a user's feed. Returns { profile, posts } or throws.
+async function getMediumFeed(user) {
   const cached = mediumCache.get(user);
-  if (cached && Date.now() - cached.at < MEDIUM_TTL) {
-    res.set("Cache-Control", "public, max-age=900");
-    return res.json(cached.data);
-  }
+  if (cached && Date.now() - cached.at < MEDIUM_TTL) return cached.data;
 
   try {
     const r = await fetch(`https://medium.com/feed/@${user}`, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (portfolio-backend)",
-        Accept: "application/rss+xml, application/xml",
+        "User-Agent": "Mozilla/5.0 (compatible; portfolio-backend; RSS reader)",
+        Accept: "application/rss+xml, application/xml;q=0.9, */*;q=0.8",
       },
+      signal: AbortSignal.timeout(8000),
     });
-    if (r.status === 404)
-      return res.status(404).json({ error: "medium user not found" });
-    if (!r.ok) throw new Error(`Medium responded ${r.status}`);
+    if (r.status === 404) {
+      const e = new Error("medium user not found");
+      e.status = 404;
+      throw e;
+    }
+    if (!r.ok) throw new Error(`Medium feed responded ${r.status}`);
 
-    const data = {
-      profile: `https://medium.com/@${user}`,
-      posts: parseMediumFeed(await r.text()),
-    };
+    const data = { profile: `https://medium.com/@${user}`, posts: parseMediumFeed(await r.text()) };
     mediumCache.set(user, { at: Date.now(), data });
+    return data;
+  } catch (err) {
+    if (cached) return cached.data; // serve stale data rather than nothing
+    throw err;
+  }
+}
+
+// Medium post links end in a 12-character hex ID, e.g. ...-9e9048f3a389
+const mediumPostId = (url) => url.match(/([0-9a-f]{10,16})(?:[/?#]|$)/i)?.[1]?.toLowerCase() || null;
+
+app.get("/api/medium", async (req, res) => {
+  const user = String(req.query.user || "").replace(/^@/, "").trim();
+  if (!/^[A-Za-z0-9_.-]{1,50}$/.test(user)) {
+    return res.status(400).json({ error: "add ?user=yourMediumUsername" });
+  }
+  try {
+    const data = await getMediumFeed(user);
     res.set("Cache-Control", "public, max-age=900");
     res.json(data);
   } catch (err) {
     console.error("Medium fetch failed:", err.message);
-    if (cached) return res.json(cached.data); // serve stale posts rather than nothing
-    res.status(502).json({ error: "couldn't load Medium posts" });
+    res.status(err.status || 502).json({ error: err.status === 404 ? "medium user not found" : "couldn't load Medium posts" });
   }
 });
 
@@ -266,25 +234,13 @@ const extraHosts = (process.env.PREVIEW_EXTRA_HOSTS || "")
   .filter(Boolean);
 
 const isAllowedHost = (host) =>
-  host === "medium.com" ||
-  host.endsWith(".medium.com") ||
-  extraHosts.includes(host);
+  host === "medium.com" || host.endsWith(".medium.com") || extraHosts.includes(host);
 
 function metaContent(html, names) {
   for (const name of names) {
     const esc = name.replace(/[:.]/g, "\\$&");
-    const a = html.match(
-      new RegExp(
-        `<meta[^>]+(?:property|name)=["']${esc}["'][^>]*content=["']([^"']+)["']`,
-        "i",
-      ),
-    );
-    const b = html.match(
-      new RegExp(
-        `<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["']${esc}["']`,
-        "i",
-      ),
-    );
+    const a = html.match(new RegExp(`<meta[^>]+(?:property|name)=["']${esc}["'][^>]*content=["']([^"']+)["']`, "i"));
+    const b = html.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]*(?:property|name)=["']${esc}["']`, "i"));
     const value = (a || b)?.[1];
     if (value) return decode(value);
   }
@@ -298,10 +254,7 @@ app.get("/api/preview", async (req, res) => {
   } catch {
     return res.status(400).json({ error: "add ?url=https://medium.com/..." });
   }
-  if (
-    target.protocol !== "https:" ||
-    !isAllowedHost(target.hostname.toLowerCase())
-  ) {
+  if (target.protocol !== "https:" || !isAllowedHost(target.hostname.toLowerCase())) {
     return res.status(400).json({ error: "only Medium links are supported" });
   }
   target.search = ""; // drop tracking params so cache keys match
@@ -313,11 +266,31 @@ app.get("/api/preview", async (req, res) => {
     return res.json(cached.data);
   }
 
+  // 1st choice: the author's RSS feed (reliable from servers, but only has the 10 latest posts)
+  const user = target.pathname.match(/^\/@([A-Za-z0-9_.-]+)/)?.[1];
+  const postId = mediumPostId(target.pathname);
+  if (user && postId) {
+    try {
+      const feed = await getMediumFeed(user);
+      const post = feed.posts.find((p) => p.id === postId);
+      if (post?.image) {
+        const data = { image: post.image, title: post.title, source: "feed" };
+        previewCache.set(key, { at: Date.now(), data });
+        res.set("Cache-Control", "public, max-age=86400");
+        return res.json(data);
+      }
+    } catch (err) {
+      console.error("Preview via feed failed:", err.message);
+    }
+  }
+
+  // 2nd choice: read the article page's share image
   try {
     const r = await fetch(key, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; portfolio-link-preview)",
-        Accept: "text/html",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml",
+        "Accept-Language": "en-US,en;q=0.9",
       },
       redirect: "follow",
       signal: AbortSignal.timeout(8000),
@@ -326,12 +299,9 @@ app.get("/api/preview", async (req, res) => {
     const html = (await r.text()).slice(0, 600_000); // meta tags are near the top
 
     const data = {
-      image: metaContent(html, [
-        "og:image",
-        "twitter:image",
-        "twitter:image:src",
-      ]),
+      image: metaContent(html, ["og:image", "twitter:image", "twitter:image:src"]),
       title: metaContent(html, ["og:title", "twitter:title"]),
+      source: "page",
     };
     previewCache.set(key, { at: Date.now(), data });
     res.set("Cache-Control", "public, max-age=86400");
@@ -346,9 +316,7 @@ app.get("/api/preview", async (req, res) => {
 // CORS rejections and bad JSON end up here
 app.use((err, _req, res, _next) => {
   console.error(err.message);
-  res
-    .status(err.message?.startsWith("Origin") ? 403 : 400)
-    .json({ error: "request not allowed" });
+  res.status(err.message?.startsWith("Origin") ? 403 : 400).json({ error: "request not allowed" });
 });
 
 app.listen(PORT, () => {
